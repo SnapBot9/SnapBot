@@ -1,15 +1,15 @@
-import os
 import telebot
 import time
 
-# التوكن الجديد
+# التوكن الجديد والمفعل
 MY_NEW_TOKEN = "8059225231:AAGCWo5MS2R3yT-y3KX9-IMSBidnBkFE17c"
 
-bot = telebot.TeleBot(MY_NEW_TOKEN)
+# تشغيل البوت مع تعطيل التعدد لمنع خطأ 409
+bot = telebot.TeleBot(MY_NEW_TOKEN, threaded=False)
 
-# سطر سحري لحل مشكلة Conflict 409
+# حذف أي اتصال قديم (Webhook) قبل البدء
 bot.remove_webhook()
-time.sleep(1)
+time.sleep(2)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -18,10 +18,10 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: True)
 def handle_all(message):
     if "snapchat.com" in message.text:
-        bot.reply_to(message, "📥 جاري معالجة رابط السناب...")
+        bot.reply_to(message, "📥 جاري معالجة الرابط...")
     else:
         bot.reply_to(message, "أرسل رابط سناب شات صحيح.")
 
 if __name__ == "__main__":
-    print("تم تنظيف الاتصالات السابقة.. البوت يبدأ الآن.")
-    bot.infinity_polling()
+    print("تم تنظيف الاتصالات.. البوت يبدأ الآن.")
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
