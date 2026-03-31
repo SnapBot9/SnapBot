@@ -1,22 +1,22 @@
 import os
 import telebot
 
-# التوكن الصحيح والكامل الخاص بك
-TOKEN = "8059225231:AAHYr_PqgGjdHFEf_VKQ-5Fv5CrODWUUM1k"
+# التوكن الجديد والنظيف الخاص بك
+TOKEN = "8059225231:AAGCWo5MS2R3yT-y3KX9-IMSBidnBkFE17c"
 
 bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "أهلاً بك! تم الربط مع Render بنجاح ✅\n\nأرسل رابط السناب الآن وسأحاول سحبه لك.")
+    bot.reply_to(message, "أهلاً بك يا بطل! 🚀\n\nتم تشغيل البوت بنجاح بالتوكن الجديد. أرسل رابط السناب الآن.")
 
 @bot.message_handler(func=lambda message: True)
 def handle_all(message):
     if "snapchat.com" in message.text:
-        bot.reply_to(message, "وصل الرابط! 📥 جاري العمل على محرك السحب... يرجى الانتظار.")
+        bot.reply_to(message, "جاري العمل على الرابط... يرجى الانتظار 📥")
     else:
-        bot.reply_to(message, "⚠️ يرجى إرسال رابط سناب شات صحيح.")
+        bot.reply_to(message, "يرجى إرسال رابط سناب شات صحيح.")
 
 if __name__ == "__main__":
-    print("البوت بدأ العمل بنجاح...")
+    print("البوت يعمل الآن بالتوكن الجديد...")
     bot.infinity_polling()
