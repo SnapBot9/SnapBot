@@ -4,9 +4,15 @@ import yt_dlp
 import threading
 import http.server
 import os
-from moviepy.editor import VideoFileClip, concatenate_videoclips
+import time
 
-# التوكن الخاص بك
+# استدعاء مكتبة الدمج بطريقة آمنة
+try:
+    from moviepy.editor import VideoFileClip, concatenate_videoclips
+except Exception as e:
+    print(f"MoviePy Import Warning: {e}")
+
+# التوكن
 MY_NEW_TOKEN = "8059225231:AAGCWo5MS2R3yT-y3KX9-IMSBidnBkFE17c"
 bot = telebot.TeleBot(MY_NEW_TOKEN, threaded=False)
 bot.remove_webhook()
@@ -20,7 +26,7 @@ def handle_render():
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, f"Welcome {message.from_user.first_name}! 👻\nأرسل رابط السناب وسأقوم بدمج القصة لك.")
+    bot.reply_to(message, f"Welcome {message.from_user.first_name}! 👻\nأرسل رابط السناب الآن.")
 
 @bot.message_handler(func=lambda message: "snapchat.com" in message.text)
 def ask_options(message):
@@ -29,14 +35,13 @@ def ask_options(message):
     btn1 = types.InlineKeyboardButton("تحميل هذا المقطع فقط 📥", callback_data="single_v")
     btn2 = types.InlineKeyboardButton("دمج القصة كاملة (متواصلة) 🔄", callback_data="merge_v")
     markup.add(btn1, btn2)
-    bot.reply_to(message, "اختر الطريقة:", reply_markup=markup)
+    bot.reply_to(message, "اختر طريقة التحميل:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     chat_id = call.message.chat.id
     url = user_links.get(chat_id)
     
-    # خيارات الـ yt-dlp الموحدة للتمويه
     ydl_opts_base = {
         'format': 'best',
         'quiet': True,
@@ -49,55 +54,39 @@ def callback_query(call):
         try:
             with yt_dlp.YoutubeDL(ydl_opts_base) as ydl:
                 info = ydl.extract_info(url, download=False)
-                video_url = info.get('url')
-                bot.send_video(chat_id, video_url, caption="✅ تم السحب!")
-        except Exception as e:
-            bot.send_message(chat_id, "❌ فشل السحب الفردي.")
+                bot.send_video(chat_id, info.get('url'), caption="✅ تم السحب!")
+        except:
+            bot.send_message(chat_id, "❌ فشل السحب.")
 
     elif call.data == "merge_v":
-        bot.edit_message_text("🎬 بدأت عملية الدمج.. يرجى الانتظار (قد تستغرق دقيقة).", chat_id, call.message.message_id)
-        
+        bot.edit_message_text("🎬 جاري التحميل والدمج.. انتظر قليلاً.", chat_id, call.message.message_id)
         try:
-            temp_files = []
-            clips = []
-            
-            # 1. سحب وتحميل المقاطع
+            # مسار التحميل
             ydl_opts_merge = ydl_opts_base.copy()
-            ydl_opts_merge['outtmpl'] = f'vid_{chat_id}_%(autonumber)s.mp4'
+            ydl_opts_merge['outtmpl'] = f'v_{chat_id}_%(autonumber)s.mp4'
             
             with yt_dlp.YoutubeDL(ydl_opts_merge) as ydl:
-                # استخراج جميع المقاطع المتاحة في الرابط
-                info = ydl.extract_info(url, download=True)
-                # إذا كان الرابط يحتوي على مقاطع متعددة
-                downloaded_files = sorted([f for f in os.listdir('.') if f.startswith(f'vid_{chat_id}_')])
-                temp_files.extend(downloaded_files)
-
-            if not temp_files:
-                bot.send_message(chat_id, "❌ لم أجد مقاطع لدمجها.")
+                ydl.download([url])
+            
+            files = sorted([f for f in os.listdir('.') if f.startswith(f'v_{chat_id}_')])
+            if not files:
+                bot.send_message(chat_id, "❌ لم أجد مقاطع للدمج.")
                 return
 
-            # 2. معالجة الدمج بـ MoviePy
-            for file in temp_files:
-                clip = VideoFileClip(file)
-                clips.append(clip)
+            clips = [VideoFileClip(f) for f in files]
+            final = concatenate_videoclips(clips, method="compose")
+            out = f"res_{chat_id}.mp4"
+            final.write_videofile(out, codec="libx264", audio_codec="aac", logger=None)
             
-            final_clip = concatenate_videoclips(clips, method="compose")
-            output_name = f"merged_{chat_id}.mp4"
-            final_clip.write_videofile(output_name, codec="libx264", audio_codec="aac", verbose=False, logger=None)
+            with open(out, 'rb') as f:
+                bot.send_video(chat_id, f, caption="✅ تم الدمج بنجاح!")
             
-            # 3. إرسال الفيديو المدمج
-            with open(output_name, 'rb') as f:
-                bot.send_video(chat_id, f, caption="✅ تم دمج القصة كاملة!")
-
-            # 4. تنظيف الملفات (حذفها من السيرفر)
-            final_clip.close()
+            # تنظيف
+            final.close()
             for c in clips: c.close()
-            for f in temp_files + [output_name]:
-                if os.path.exists(f): os.remove(f)
-
+            for f in files + [out]: os.remove(f)
         except Exception as e:
-            bot.send_message(chat_id, "⚠️ عذراً، القصة طويلة جداً على قدرات السيرفر المجاني أو حدث خطأ في الدمج.")
-            print(f"Merge Error: {e}")
+            bot.send_message(chat_id, f"⚠️ خطأ: تأكد من تثبيت MoviePy أو حجم القصة كبير.")
 
 if __name__ == "__main__":
     threading.Thread(target=handle_render, daemon=True).start()
