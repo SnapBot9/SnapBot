@@ -8,7 +8,7 @@ import time
 MY_TOKEN = "8059225231:AAGCWo5MS2R3yT-y3KX9-IMSBidnBkFE17c"
 bot = telebot.TeleBot(MY_TOKEN, threaded=False)
 
-# البروكسيات الخاصة بك من صورتك في Webshare
+# قائمة البروكسيات الخاصة بك
 PROXIES_LIST = [
     'http://hoxhnwln:q2wym85y5h7a@31.59.20.176:6754',
     'http://hoxhnwln:q2wym85y5h7a@23.95.150.145:6114',
@@ -23,22 +23,25 @@ PROXIES_LIST = [
 ]
 
 def get_ydl_options():
+    # اختيار بروكسي عشوائي لكل عملية بحث جديدة لكسر الحجب
     selected_proxy = random.choice(PROXIES_LIST)
     return {
         'proxy': selected_proxy,
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': 'in_playlist', # سحب الروابط دفعة واحدة وبسرعة
+        'extract_flat': True, 
+        'force_generic_extractor': False,
         'playlist_items': '1-100',
         'nocheckcertificate': True,
         'ignoreerrors': True,
-        'headers': {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-            'Accept': '*/*',
-            'Origin': 'https://www.snapchat.com',
-            'Referer': 'https://www.snapchat.com/',
-            'Sec-Fetch-Mode': 'cors',
-        },
+        # هيدرز لمحاكاة متصفح حقيقي كما تفعل البوتات الكبيرة
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
     }
 
 def handle_render():
@@ -51,44 +54,53 @@ def handle_all_messages(message):
     target = message.text.strip()
     url = target if "snapchat.com" in target else f"https://www.snapchat.com/add/{target}"
     
-    wait_msg = bot.reply_to(message, "⚡ جاري محاولة سحب القصة كاملة عبر نظام التخفي...")
+    status_msg = bot.reply_to(message, "🔍 جاري محاكاة جلسة تصفح حقيقية لسحب القصة كاملة...")
     
     try:
         with yt_dlp.YoutubeDL(get_ydl_options()) as ydl:
-            # محاولة الاستخراج مع البروكسي المختار
+            # محاولة جلب البيانات
             info = ydl.extract_info(url, download=False)
             
+            # استخراج المدخلات سواء كانت فيديو أو صورة
             entries = info.get('entries', [])
             if not entries and 'url' in info:
                 entries = [info]
 
             total = len(entries)
             if total == 0:
-                bot.edit_message_text("❌ لم ينجح المتصفح في جلب المحتوى. قد يكون الحساب محظوراً أو محمياً جداً.", message.chat.id, wait_msg.message_id)
+                bot.edit_message_text("❌ لم ينجح السحب. جرب يوزر آخر أو انتظر دقيقة.", message.chat.id, status_msg.message_id)
                 return
 
-            bot.edit_message_text(f"🚀 تم كسر الحماية! جاري إرسال {total} سنابة...", message.chat.id, wait_msg.message_id)
+            bot.edit_message_text(f"✅ تم العثور على {total} سنابة. جاري التوريد من السيرفر...", message.chat.id, status_msg.message_id)
 
             for i, entry in enumerate(entries, 1):
-                video_url = entry.get('url')
-                if video_url:
-                    try:
-                        # محاولة الإرسال كفيديو، وإذا فشل يتم الإرسال كصورة
-                        if ".jpg" in video_url.lower() or ".png" in video_url.lower():
-                            bot.send_photo(message.chat.id, video_url, caption=f"سنابة [{i}]")
-                        else:
-                            bot.send_video(message.chat.id, video_url, caption=f"سنابة [{i}]")
-                        time.sleep(1) # تأخير بسيط لضمان وصول الترتيب صح
-                    except:
-                        continue
+                file_url = entry.get('url')
+                if not file_url: continue
+                
+                try:
+                    # فحص النوع (صورة أو فيديو) للإرسال الصحيح
+                    if any(ext in file_url.lower() for ext in [".jpg", ".png", ".jpeg"]):
+                        bot.send_photo(message.chat.id, file_url, caption=f"سنابة رقم [{i}]")
+                    else:
+                        bot.send_video(message.chat.id, file_url, caption=f"سنابة رقم [{i}]")
+                    
+                    # تأخير بسيط جداً لمنع اكتشاف "التدفق السريع"
+                    time.sleep(0.8)
+                except:
+                    continue
             
-            bot.send_message(message.chat.id, f"✅ تم إكمال المهمة لسحب {total} مقطع/صورة.")
-            
+            bot.send_message(message.chat.id, f"🏁 اكتمل السحب بنجاح! الإجمالي: {total}")
+
     except Exception:
-        bot.edit_message_text("❌ عذراً، سناب شات يرفض الاتصال حالياً. جرب مرة أخرى بعد قليل.", message.chat.id, wait_msg.message_id)
+        bot.edit_message_text("⚠️ خطأ في الاتصال بالسيرفر. البروكسي مشغول، حاول مرة أخرى.", message.chat.id, status_msg.message_id)
 
 if __name__ == "__main__":
+    # تنظيف الجلسات القديمة لحل مشكلة Conflict 409
     try: bot.remove_webhook()
     except: pass
+    
+    # تشغيل سيرفر Render للحفاظ على استمرارية البوت
     threading.Thread(target=handle_render, daemon=True).start()
+    
+    print("البوت يعمل الآن بنفس تقنية البوتات الكبيرة...")
     bot.infinity_polling(timeout=20)
