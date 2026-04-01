@@ -3,20 +3,19 @@ from telebot import types
 import yt_dlp
 import threading
 import http.server
-import os
 
 # التوكن الخاص بك
-MY_NEW_TOKEN = "8059225231:AAGCWo5MS2R3yT-y3KX9-IMSBidnBkFE17c"
-bot = telebot.TeleBot(MY_NEW_TOKEN, threaded=False)
+MY_TOKEN = "8059225231:AAGCWo5MS2R3yT-y3KX9-IMSBidnBkFE17c"
+bot = telebot.TeleBot(MY_TOKEN, threaded=False)
 
-# إعدادات لكسر حاجز الـ 4 عناصر وسحب كل القصة
+# إعدادات السحب القصوى لجلب كامل الستوري
 YDL_OPTIONS = {
     'format': 'best',
     'quiet': True,
     'no_warnings': True,
-    'extract_flat': False, # لضمان الدخول لعمق القصة
-    'playlist_items': '1-100', # نأمر المكتبة بسحب أول 100 عنصر بدلاً من الاكتفاء بالبداية
+    'extract_flat': False,
     'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'referer': 'https://www.snapchat.com/',
 }
 
 def handle_render():
@@ -26,74 +25,57 @@ def handle_render():
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "تم تحديث النظام لسحب القصة كاملة (حتى 100 عنصر) وتحديد السنابة المطلوبة بدقة 🎯")
+    bot.reply_to(message, "أهلاً بك في بوت سحب ستوري السناب 👻\n\nأرسل الآن (اسم المستخدم) أو رابط الحساب مباشرة وسأقوم بسحب كامل القصص المتاحة لك.")
 
-@bot.message_handler(func=lambda message: "snapchat.com" in message.text)
-def ask_options(message):
-    user_links[message.chat.id] = message.text
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("🎯 تحميل السنابة اللي أرسلتها بالضبط", callback_data="single_v"),
-        types.InlineKeyboardButton("🎞️ تحميل القصة كاملة (بدون حدود)", callback_data="split_v")
-    )
-    bot.reply_to(message, "الرابط جاهز، اختر نوع السحب:", reply_markup=markup)
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+    input_text = message.text.strip()
+    
+    # تحويل الإدخال إلى رابط حساب إذا كان يوزر فقط
+    if "snapchat.com" not in input_text:
+        target_url = f"https://www.snapchat.com/add/{input_text}"
+    else:
+        target_url = input_text
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
-    chat_id = call.message.chat.id
-    url = user_links.get(chat_id)
-    if not url: return
-
-    if call.data == "single_v":
-        bot.edit_message_text("⏳ جاري تحديد السنابة المطلوبة من القصة...", chat_id, call.message.message_id)
-        try:
-            target_id = url.split('/')[-1].split('?')[0]
-            with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-                info = ydl.extract_info(url, download=False)
-                entries = info.get('entries', [info])
-                found_item = None
-                for entry in entries:
-                    if target_id in entry.get('url', '') or target_id in entry.get('id', ''):
-                        found_item = entry
-                        break
+    wait_msg = bot.reply_to(message, "🔍 جاري فحص الحساب وسحب الستوريات... انتظر قليلاً.")
+    
+    try:
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            # استخراج معلومات الحساب والقصص
+            info = ydl.extract_info(target_url, download=False)
+            
+            if 'entries' in info:
+                entries = info['entries']
+                total = len(entries)
                 
-                if not found_item: found_item = entries[0] # احتياطي
-
-                m_url = found_item.get('url')
-                if any(x in m_url for x in [".jpg", ".png", "webp"]):
-                    bot.send_photo(chat_id, m_url, caption="✅ السنابة المطلوبة (صورة)")
-                else:
-                    bot.send_video(chat_id, m_url, caption="✅ السنابة المطلوبة (فيديو)")
-        except:
-            bot.send_message(chat_id, "❌ فشل سحب المقطع المحدد.")
-
-    elif call.data == "split_v":
-        bot.edit_message_text("📦 جاري جرد كافة عناصر القصة... انتظر قليلاً.", chat_id, call.message.message_id)
-        try:
-            with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-                info = ydl.extract_info(url, download=False)
-                entries = info.get('entries', [])
-                if not entries:
-                    bot.send_video(chat_id, info.get('url'))
+                if total == 0:
+                    bot.edit_message_text("❌ لا توجد قصص (ستوري) عامة متاحة حالياً لهذا الحساب.", message.chat.id, wait_msg.message_id)
                     return
+
+                bot.edit_message_text(f"✅ تم العثور على {total} سنابة. جاري الإرسال بالترتيب...", message.chat.id, wait_msg.message_id)
                 
-                count = 0
-                for entry in entries:
-                    m_url = entry.get('url')
-                    if not m_url: continue
-                    try:
-                        if any(x in m_url.lower() for x in [".jpg", ".png", ".jpeg"]):
-                            bot.send_photo(chat_id, m_url)
-                        else:
-                            bot.send_video(chat_id, m_url)
-                        count += 1
-                    except: continue
+                for index, entry in enumerate(entries, 1):
+                    media_url = entry.get('url')
+                    if media_url:
+                        try:
+                            # إرسال كفيديو أو صورة حسب النوع
+                            if any(ext in media_url.lower() for ext in [".jpg", ".png", ".jpeg"]):
+                                bot.send_photo(message.chat.id, media_url, caption=f"السنابة رقم [{index}]")
+                            else:
+                                bot.send_video(message.chat.id, media_url, caption=f"السنابة رقم [{index}]")
+                        except:
+                            continue # تخطي في حال فشل إرسال مقطع معين
                 
-                bot.send_message(chat_id, f"✅ اكتمل السحب! تم إرسال {count} عنصر من القصة.")
-        except:
-            bot.send_message(chat_id, "⚠️ خطأ في سحب القصة كاملة.")
+                bot.send_message(message.chat.id, f"✅ انتهى تحميل الستوريات لـ {input_text}")
+            else:
+                # في حال كان الرابط لسنابة واحدة فقط
+                media_url = info.get('url')
+                bot.send_video(message.chat.id, media_url, caption="✅ تم تحميل المقطع.")
+                bot.delete_message(message.chat.id, wait_msg.message_id)
+
+    except Exception as e:
+        bot.edit_message_text("❌ فشل السحب. تأكد من صحة اليوزر وأن الحساب يحتوي على ستوري عام (Public Story).", message.chat.id, wait_msg.message_id)
 
 if __name__ == "__main__":
-    user_links = {}
     threading.Thread(target=handle_render, daemon=True).start()
     bot.infinity_polling()
