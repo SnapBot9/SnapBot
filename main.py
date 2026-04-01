@@ -4,22 +4,23 @@ import yt_dlp
 import threading
 import http.server
 import os
-import time
 
-# التوكن الخاص بك
+# التوكن
 MY_NEW_TOKEN = "8059225231:AAGCWo5MS2R3yT-y3KX9-IMSBidnBkFE17c"
 bot = telebot.TeleBot(MY_NEW_TOKEN, threaded=False)
 bot.remove_webhook()
 
 user_links = {}
 
-# إعدادات السحب الموحدة (تمويه آيفون)
+# إعدادات متقدمة لمحاكاة متصفح حقيقي وتجاوز الحظر
 YDL_OPTIONS = {
-    'format': 'best',
+    'format': 'bestvideo+bestaudio/best',
     'quiet': True,
     'no_warnings': True,
-    'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    'ignoreerrors': True, # يتجاهل الصور المعطوبة ويستمر في البحث عن الفيديوهات
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
     'referer': 'https://www.snapchat.com/',
+    'extract_flat': False, # تأكد من استخراج المحتوى بالكامل وليس العناوين فقط
 }
 
 def handle_render():
@@ -29,58 +30,62 @@ def handle_render():
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, f"Welcome {message.from_user.first_name}! 👻\nأرسل رابط السناب الآن واكتشف الخيارات الجديدة.")
+    bot.reply_to(message, "أهلاً بك! تم تحديث النظام لحل مشاكل الصور وفشل السحب. أرسل الرابط الآن.")
 
 @bot.message_handler(func=lambda message: "snapchat.com" in message.text)
 def ask_options(message):
     user_links[message.chat.id] = message.text
     markup = types.InlineKeyboardMarkup(row_width=1)
-    
-    btn1 = types.InlineKeyboardButton("تحميل المقطع الحالي فقط 📥", callback_data="single_v")
-    btn2 = types.InlineKeyboardButton("تحميل القصة (مقاطع منفصلة) 🎞️", callback_data="split_v")
-    btn3 = types.InlineKeyboardButton("دمج القصة في فيديو واحد 🔄", callback_data="merge_v")
-    
-    markup.add(btn1, btn2, btn3)
-    bot.reply_to(message, "تم استلام الرابط! اختر ما تريد فعله:", reply_markup=markup)
+    markup.add(
+        types.InlineKeyboardButton("المقطع الحالي (محاولة قوية) 📥", callback_data="single_v"),
+        types.InlineKeyboardButton("كل فيديوهات القصة (تخطي الصور) 🎞️", callback_data="split_v")
+    )
+    bot.reply_to(message, "اختر طريقة السحب:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     chat_id = call.message.chat.id
     url = user_links.get(chat_id)
     
-    if not url:
-        bot.send_message(chat_id, "⚠️ أرسل الرابط مرة أخرى.")
-        return
+    if not url: return
 
-    # 1. تحميل مقطع واحد
+    # --- حل مشكلة المقطع الفردي ---
     if call.data == "single_v":
-        bot.edit_message_text("⏳ جاري سحب المقطع الحالي...", chat_id, call.message.message_id)
+        bot.edit_message_text("⏳ جاري محاولة السحب بأكثر من بروتوكول...", chat_id, call.message.message_id)
         try:
             with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
                 info = ydl.extract_info(url, download=False)
-                bot.send_video(chat_id, info.get('url'), caption="✅ تم تحميل المقطع بنجاح!")
-        except:
-            bot.send_message(chat_id, "❌ فشل السحب. تأكد أن القصة عامة وليست خاصة.")
-
-    # 2. تحميل القصة مقاطع منفصلة (الاقتراح الجديد)
-    elif call.data == "split_v":
-        bot.edit_message_text("🎞️ جاري سحب كامل القصة كمقاطع منفصلة... انتظر ثواني.", chat_id, call.message.message_id)
-        try:
-            with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-                info = ydl.extract_info(url, download=False)
-                if 'entries' in info:
-                    for entry in info['entries']:
-                        bot.send_video(chat_id, entry.get('url'))
-                    bot.send_message(chat_id, "✅ تم إرسال جميع مقاطع القصة.")
+                # التأكد من الحصول على رابط فيديو حقيقي
+                video_url = info.get('url') or (info.get('entries')[0].get('url') if info.get('entries') else None)
+                
+                if video_url:
+                    bot.send_video(chat_id, video_url, caption="✅ تم السحب بنجاح")
                 else:
-                    # إذا كان الرابط يحتوي على فيديو واحد فقط
-                    bot.send_video(chat_id, info.get('url'), caption="✅ الرابط يحتوي على مقطع واحد فقط.")
-        except:
-            bot.send_message(chat_id, "⚠️ حدث خطأ أثناء سحب القصة كاملة.")
+                    bot.send_message(chat_id, "❌ لم يتم العثور على فيديو في هذا الرابط (قد يكون صورة فقط).")
+        except Exception as e:
+            bot.send_message(chat_id, "⚠️ فشل السحب الفردي. سناب شات يرفض الاتصال من هذا السيرفر حالياً.")
 
-    # 3. دمج القصة (متواصل)
-    elif call.data == "merge_v":
-        bot.send_message(chat_id, "🚧 ميزة الدمج تحت الصيانة حالياً لضمان استقرار السيرفر. استخدم خيار (المقاطع المنفصلة) حالياً.")
+    # --- حل مشكلة "تحميل الصور فقط" في القصة ---
+    elif call.data == "split_v":
+        bot.edit_message_text("🎞️ فحص القصة وتخطي الصور... لحظات.", chat_id, call.message.message_id)
+        try:
+            with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                if 'entries' in info:
+                    found_video = False
+                    for entry in info['entries']:
+                        # فحص إذا كان العنصر فيديو وليس صورة
+                        if entry and 'url' in entry and ('.mp4' in entry['url'] or 'video' in entry.get('format', '')):
+                            bot.send_video(chat_id, entry['url'])
+                            found_video = True
+                    
+                    if not found_video:
+                        bot.send_message(chat_id, "ℹ️ القصة تحتوي على صور فقط، ولا توجد فيديوهات لسحبها.")
+                else:
+                    bot.send_message(chat_id, "⚠️ لم نتمكن من العثور على قائمة مقاطع.")
+        except:
+            bot.send_message(chat_id, "❌ خطأ في فحص القصة.")
 
 if __name__ == "__main__":
     threading.Thread(target=handle_render, daemon=True).start()
