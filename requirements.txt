@@ -1,3 +1,4 @@
-pyTelegramBotAPI
-yt-dlp
+pyrogram
+tgcrypto
 requests
+tinydb
